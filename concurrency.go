@@ -18,7 +18,7 @@ func main() {
 		go func(i int) {
 			defer wg.Done()
 			time.Sleep(time.Duration(i) * time.Second)
-            log.Printf("routine %d 的打印\n", i)
+			log.Printf("routine %d 的打印\n", i)
 			ch <- i
 		}(i)
 	}
