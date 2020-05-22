@@ -121,7 +121,7 @@ OutFor:
 				data = &bytes.Buffer{}
 				count = 0
 			}
-			if time.Now().Hour() > start.Hour() {
+			if time.Now().Hour() != start.Hour() {
 				// 到达下一个小时，本次监听完成使命，进入manageTail的下一个循环
 				break OutFor
 			}
