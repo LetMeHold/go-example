@@ -1,6 +1,8 @@
 {
     "Url": "http://172.18.27.106:4902/log/access/tengine_log",
+    "Timeout": 3,
     "LineNum": 10,
+    "App": "我的APP",
     "Path": "/mydata/tengine/log",
     "Files": [
         "api"

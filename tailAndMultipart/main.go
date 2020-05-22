@@ -14,6 +14,8 @@ import (
 )
 
 var conf Config
+var app []byte
+var tmot time.Duration
 
 func main() {
 	fname := "config.json"
@@ -22,6 +24,8 @@ func main() {
 		log.Printf("载入%s失败：%v", fname, err)
 		return
 	}
+	app = []byte(conf.App)
+	tmot = time.Duration(conf.Timeout)
 
 	for _, proj := range conf.Files {
 		path := conf.Path + "/" + proj
@@ -45,7 +49,9 @@ func main() {
 
 type Config struct {
 	Url     string   `json: "Url"`
+	Timeout int      `json: "Timeout"`
 	LineNum int      `json: "LineNum"`
+	App     string   `json: "App"`
 	Path    string   `json: "Path"`
 	Files   []string `json: "Files"`
 }
@@ -130,13 +136,22 @@ OutFor:
 func send(data *bytes.Buffer, filename string) {
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
-	part, _ := writer.CreateFormFile("log", filename)
-	_, e1 := part.Write(data.Bytes())
+
+	part1, _ := writer.CreateFormFile("log", filename)
+	_, e1 := part1.Write(data.Bytes())
 	if e1 != nil {
 		log.Printf("%s 发送数据失败: %v", filename, e1)
 		writer.Close()
 		return
 	}
+	part2, _ := writer.CreateFormField("app")
+	_, e5 := part2.Write(app)
+	if e5 != nil {
+		log.Printf("%s 发送数据失败: %v", filename, e5)
+		writer.Close()
+		return
+	}
+
 	contentType := writer.FormDataContentType()
 	writer.Close()
 	req, e2 := http.NewRequest("POST", conf.Url, buf)
@@ -145,8 +160,9 @@ func send(data *bytes.Buffer, filename string) {
 		return
 	}
 	req.Header.Set("Content-Type", contentType)
-	client := &http.Client{Timeout: time.Duration(time.Second)}
+	client := &http.Client{Timeout: time.Duration(time.Second * tmot)}
 	rep, e3 := client.Do(req)
+
 	if e3 != nil {
 		log.Printf("%s 发送数据失败: %v", filename, e3)
 		return
