@@ -38,7 +38,7 @@ func main() {
 		go manageTail(path)
 	}
 
-	tc := time.NewTicker(time.Minute * 5)
+	tc := time.NewTicker(time.Minute * 15)
 	for {
 		select {
 		case <-tc.C:
