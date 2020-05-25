@@ -31,7 +31,6 @@ var (
 			Whence: 2, // 0 文件开头, 1 指定Offset, 2 文件末尾
 		},
 	}
-	infLog = log.New(os.Stdout, "INFO ", log.Ldate|log.Ltime)
 	errLog = log.New(os.Stdout, "ERROR ", log.Ldate|log.Ltime)
 )
 
@@ -58,7 +57,7 @@ func main() {
 	for {
 		select {
 		case <-tc.C:
-			infLog.Printf("Goroutine number: %d", runtime.NumGoroutine())
+			log.Printf("Goroutine number: %d", runtime.NumGoroutine())
 		}
 	}
 }
@@ -106,9 +105,9 @@ func manageTail(path string) {
 }
 
 func traceMT(path string) func() {
-	infLog.Printf("启动监听线程: %s", path)
+	log.Printf("启动监听线程: %s", path)
 	return func() {
-		infLog.Printf("停止监听线程: %s", path)
+		log.Printf("停止监听线程: %s", path)
 	}
 }
 
@@ -146,7 +145,7 @@ OutFor:
 }
 
 func traceRT(t *tail.Tail) func() {
-	infLog.Printf("开始监听文件: %s", t.Filename)
+	log.Printf("开始监听文件: %s", t.Filename)
 	return func() {
 		t.Cleanup()
 		if e := t.Stop(); e != nil {
@@ -158,7 +157,7 @@ func traceRT(t *tail.Tail) func() {
 			tConf.Location.Whence = conf.FollowWhence
 			mu.Unlock()
 		}
-		infLog.Printf("停止监听文件: %s", t.Filename)
+		log.Printf("停止监听文件: %s", t.Filename)
 	}
 }
 
