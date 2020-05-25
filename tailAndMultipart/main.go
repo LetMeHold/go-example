@@ -1,5 +1,9 @@
 package main
 
+/*
+监听（tail -f）以小时分隔的nginx日志，并将内容发送到MultiPartFile的http接口
+*/
+
 import (
 	"bytes"
 	"encoding/json"
