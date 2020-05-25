@@ -13,9 +13,19 @@ import (
 	"time"
 )
 
-var conf Config
-var app []byte
-var tmot time.Duration
+var (
+	conf  Config
+	app   []byte
+	tmot  time.Duration
+	tmFmt = "2006010215"
+	tConf = tail.Config{
+		Follow: true,
+		Location: &tail.SeekInfo{
+			Offset: 0,
+			Whence: 2, // 0 文件开头, 1 指定Offset, 2 文件末尾
+		},
+	}
+)
 
 func main() {
 	fname := "config.json"
@@ -68,16 +78,6 @@ func loadConf(fname string, conf *Config) error {
 	return nil
 }
 
-var tConf = tail.Config{
-	Follow: true,
-	Location: &tail.SeekInfo{
-		Offset: 0,
-		Whence: 2, // 0 文件开头, 1 指定Offset, 2 文件末尾
-	},
-}
-
-var tmFmt = "2006010215"
-
 func manageTail(path string) {
 	defer traceMT(path)()
 	for {
@@ -103,7 +103,7 @@ func recvTail(t *tail.Tail) {
 	defer traceRT(t)()
 	start := time.Now()
 	tc := time.NewTicker(time.Minute)
-	var count int
+	count := 0
 	data := &bytes.Buffer{}
 OutFor:
 	for {
