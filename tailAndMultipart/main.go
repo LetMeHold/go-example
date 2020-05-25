@@ -40,8 +40,6 @@ func main() {
 		log.Printf("载入%s失败：%v", fname, err)
 		return
 	}
-	app = []byte(conf.App)
-	tmot = time.Duration(conf.Timeout)
 
 	for _, proj := range conf.Files {
 		path := conf.Path + "/" + proj
@@ -64,12 +62,14 @@ func main() {
 }
 
 type Config struct {
-	Url     string   `json: "Url"`
-	Timeout int      `json: "Timeout"`
-	LineNum int      `json: "LineNum"`
-	App     string   `json: "App"`
-	Path    string   `json: "Path"`
-	Files   []string `json: "Files"`
+	Url          string   `json: "Url"`
+	Timeout      int      `json: "Timeout"`
+	LineNum      int      `json: "LineNum"`
+	FirstWhence  int      `json: "FirstWhence"`
+	FollowWhence int      `json: "FollowWhence"`
+	App          string   `json: "App"`
+	Path         string   `json: "Path"`
+	Files        []string `json: "Files"`
 }
 
 func loadConf(fname string, conf *Config) error {
@@ -81,6 +81,9 @@ func loadConf(fname string, conf *Config) error {
 	if err != nil {
 		return err
 	}
+	app = []byte(conf.App)
+	tmot = time.Duration(conf.Timeout)
+	tConf.Location.Whence = conf.FirstWhence
 	return nil
 }
 
@@ -147,10 +150,10 @@ func traceRT(t *tail.Tail) func() {
 		if e := t.Stop(); e != nil {
 			log.Printf("%s stop tail 出现错误: %v", t.Filename, e)
 		}
-		if tConf.Location.Whence != 0 {
-			// 首次启动从文件末尾开始，后面则从文件开头
+		if tConf.Location.Whence != conf.FollowWhence {
+			// 默认首次启动从文件末尾tail，后续则从文件开头tail
 			mu.Lock()
-			tConf.Location.Whence = 0
+			tConf.Location.Whence = conf.FollowWhence
 			mu.Unlock()
 		}
 		log.Printf("停止监听文件: %s", t.Filename)
