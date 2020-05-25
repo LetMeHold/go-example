@@ -31,13 +31,15 @@ var (
 			Whence: 2, // 0 文件开头, 1 指定Offset, 2 文件末尾
 		},
 	}
+	infLog = log.New(os.Stdout, "INFO ", log.Ldate|log.Ltime)
+	errLog = log.New(os.Stdout, "ERROR ", log.Ldate|log.Ltime)
 )
 
 func main() {
 	fname := "config.json"
 	err := loadConf(fname, &conf)
 	if err != nil {
-		log.Printf("载入%s失败：%v", fname, err)
+		errLog.Printf("载入%s失败：%v", fname, err)
 		return
 	}
 
@@ -45,7 +47,7 @@ func main() {
 		path := conf.Path + "/" + proj
 		if _, e := os.Stat(path); e != nil {
 			if os.IsNotExist(e) {
-				log.Printf("路径 %s 不存在!", path)
+				errLog.Printf("路径 %s 不存在!", path)
 				continue
 			}
 		}
@@ -56,7 +58,7 @@ func main() {
 	for {
 		select {
 		case <-tc.C:
-			log.Printf("Goroutine number: %d", runtime.NumGoroutine())
+			infLog.Printf("Goroutine number: %d", runtime.NumGoroutine())
 		}
 	}
 }
@@ -96,7 +98,7 @@ func manageTail(path string) {
 		filename := path + "/access-" + tm + ".log"
 		t, e := tail.TailFile(filename, tConf)
 		if e != nil {
-			log.Printf("%s tail faild: %v", filename, e)
+			errLog.Printf("%s tail faild: %v", filename, e)
 			return
 		}
 		recvTail(t, recvBuf, sendBuf)
@@ -104,9 +106,9 @@ func manageTail(path string) {
 }
 
 func traceMT(path string) func() {
-	log.Printf("启动监听线程: %s", path)
+	infLog.Printf("启动监听线程: %s", path)
 	return func() {
-		log.Printf("停止监听线程: %s", path)
+		infLog.Printf("停止监听线程: %s", path)
 	}
 }
 
@@ -120,7 +122,7 @@ OutFor:
 		select {
 		case line, ok := <-t.Lines:
 			if !ok {
-				log.Printf("%s tail chan 出现未知错误!", t.Filename)
+				errLog.Printf("%s tail chan 出现未知错误!", t.Filename)
 				break OutFor
 			}
 			recvBuf.WriteString(line.Text)
@@ -144,11 +146,11 @@ OutFor:
 }
 
 func traceRT(t *tail.Tail) func() {
-	log.Printf("开始监听文件: %s", t.Filename)
+	infLog.Printf("开始监听文件: %s", t.Filename)
 	return func() {
 		t.Cleanup()
 		if e := t.Stop(); e != nil {
-			log.Printf("%s stop tail 出现错误: %v", t.Filename, e)
+			errLog.Printf("%s stop tail 出现错误: %v", t.Filename, e)
 		}
 		if tConf.Location.Whence != conf.FollowWhence {
 			// 默认首次启动从文件末尾tail，后续则从文件开头tail
@@ -156,7 +158,7 @@ func traceRT(t *tail.Tail) func() {
 			tConf.Location.Whence = conf.FollowWhence
 			mu.Unlock()
 		}
-		log.Printf("停止监听文件: %s", t.Filename)
+		infLog.Printf("停止监听文件: %s", t.Filename)
 	}
 }
 
@@ -167,14 +169,14 @@ func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) {
 	part1, _ := writer.CreateFormFile("log", filename)
 	_, e1 := part1.Write(recvBuf.Bytes())
 	if e1 != nil {
-		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e1)
+		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e1)
 		writer.Close()
 		return
 	}
 	part2, _ := writer.CreateFormField("app")
 	_, e5 := part2.Write(app)
 	if e5 != nil {
-		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e5)
+		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e5)
 		writer.Close()
 		return
 	}
@@ -183,7 +185,7 @@ func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) {
 	writer.Close()
 	req, e2 := http.NewRequest("POST", conf.Url, sendBuf)
 	if e2 != nil {
-		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e2)
+		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e2)
 		return
 	}
 	req.Header.Set("Content-Type", contentType)
@@ -191,17 +193,17 @@ func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) {
 	rep, e3 := client.Do(req)
 
 	if e3 != nil {
-		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e3)
+		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e3)
 		return
 	}
 	body, e4 := ioutil.ReadAll(rep.Body)
 	rep.Body.Close()
 	if e4 != nil {
-		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e4)
+		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e4)
 		return
 	}
 	ret := string(body)
 	if ret != "{\"code\":\"0000\"}" {
-		log.Printf("%s 发送数据失败，丢弃日志%d行: %s", filename, count, ret)
+		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %s", filename, count, ret)
 	}
 }
