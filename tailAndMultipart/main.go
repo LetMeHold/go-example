@@ -79,6 +79,7 @@ var tConf = tail.Config{
 var tmFmt = "2006010215"
 
 func manageTail(path string) {
+	defer traceMT(path)()
 	for {
 		tm := time.Now().Format(tmFmt)
 		filename := path + "/access-" + tm + ".log"
@@ -91,14 +92,19 @@ func manageTail(path string) {
 	}
 }
 
-func recvTail(t *tail.Tail) {
-	log.Printf("开始监听文件: %s", t.Filename)
-	start := time.Now()
+func traceMT(path string) func() {
+	log.Printf("启动监听线程: %s", path)
+	return func() {
+		log.Printf("停止监听线程: %s", path)
+	}
+}
 
+func recvTail(t *tail.Tail) {
+	defer traceRT(t)()
+	start := time.Now()
 	tc := time.NewTicker(time.Minute)
 	var count int
 	data := &bytes.Buffer{}
-
 OutFor:
 	for {
 		select {
@@ -127,10 +133,21 @@ OutFor:
 			}
 		}
 	}
-	t.Cleanup()
-	t.Stop()
-	tConf.Location.Whence = 0 // 首次启动从文件末尾开始，后面则从文件开头
-	log.Printf("停止监听文件: %s", t.Filename)
+}
+
+func traceRT(t *tail.Tail) func() {
+	log.Printf("开始监听文件: %s", t.Filename)
+	return func() {
+		t.Cleanup()
+		if e := t.Stop(); e != nil {
+			log.Printf("%s stop tail 出现错误: %v", t.Filename, e)
+		}
+		if tConf.Location.Whence != 0 {
+			// 首次启动从文件末尾开始，后面则从文件开头
+			tConf.Location.Whence = 0
+		}
+		log.Printf("停止监听文件: %s", t.Filename)
+	}
 }
 
 func send(data *bytes.Buffer, filename string) {
