@@ -86,6 +86,8 @@ func loadConf(fname string, conf *Config) error {
 
 func manageTail(path string) {
 	defer traceMT(path)()
+	recvBuf := &bytes.Buffer{}
+	sendBuf := &bytes.Buffer{}
 	for {
 		tm := time.Now().Format(tmFmt)
 		filename := path + "/access-" + tm + ".log"
@@ -94,7 +96,7 @@ func manageTail(path string) {
 			log.Printf("%s tail faild: %v", filename, e)
 			return
 		}
-		recvTail(t)
+		recvTail(t, recvBuf, sendBuf)
 	}
 }
 
@@ -105,12 +107,11 @@ func traceMT(path string) func() {
 	}
 }
 
-func recvTail(t *tail.Tail) {
+func recvTail(t *tail.Tail, recvBuf, sendBuf *bytes.Buffer) {
 	defer traceRT(t)()
 	start := time.Now()
 	tc := time.NewTicker(time.Minute)
 	count := 0
-	data := &bytes.Buffer{}
 OutFor:
 	for {
 		select {
@@ -119,18 +120,16 @@ OutFor:
 				log.Printf("%s tail chan 出现未知错误!", t.Filename)
 				break OutFor
 			}
-			data.WriteString(line.Text)
-			data.WriteString("\n")
+			recvBuf.WriteString(line.Text)
+			recvBuf.WriteString("\n")
 			count++
 			if count == conf.LineNum { // 缓存指定行数后一起发送
-				send(data, t.Filename, count)
-				data = &bytes.Buffer{}
+				send(recvBuf, sendBuf, t.Filename, count)
 				count = 0
 			}
 		case <-tc.C:
 			if count > 0 { // 超过一定时间，没达到指定行数也要发送
-				send(data, t.Filename, count)
-				data = &bytes.Buffer{}
+				send(recvBuf, sendBuf, t.Filename, count)
 				count = 0
 			}
 			if time.Now().Hour() != start.Hour() {
@@ -158,12 +157,12 @@ func traceRT(t *tail.Tail) func() {
 	}
 }
 
-func send(data *bytes.Buffer, filename string, count int) {
-	buf := &bytes.Buffer{}
-	writer := multipart.NewWriter(buf)
-
+func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) {
+	defer recvBuf.Reset()
+	defer sendBuf.Reset()
+	writer := multipart.NewWriter(sendBuf)
 	part1, _ := writer.CreateFormFile("log", filename)
-	_, e1 := part1.Write(data.Bytes())
+	_, e1 := part1.Write(recvBuf.Bytes())
 	if e1 != nil {
 		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e1)
 		writer.Close()
@@ -179,7 +178,7 @@ func send(data *bytes.Buffer, filename string, count int) {
 
 	contentType := writer.FormDataContentType()
 	writer.Close()
-	req, e2 := http.NewRequest("POST", conf.Url, buf)
+	req, e2 := http.NewRequest("POST", conf.Url, sendBuf)
 	if e2 != nil {
 		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e2)
 		return
