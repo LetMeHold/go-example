@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 )
 
 var (
 	conf  Config
 	app   []byte
+	mu    sync.Mutex
 	tmot  time.Duration
 	tmFmt = "2006010215"
 	tConf = tail.Config{
@@ -144,7 +146,9 @@ func traceRT(t *tail.Tail) func() {
 		}
 		if tConf.Location.Whence != 0 {
 			// 首次启动从文件末尾开始，后面则从文件开头
+			mu.Lock()
 			tConf.Location.Whence = 0
+			mu.Unlock()
 		}
 		log.Printf("停止监听文件: %s", t.Filename)
 	}
