@@ -123,13 +123,13 @@ OutFor:
 			data.WriteString("\n")
 			count++
 			if count == conf.LineNum { // 缓存指定行数后一起发送
-				send(data, t.Filename)
+				send(data, t.Filename, count)
 				data = &bytes.Buffer{}
 				count = 0
 			}
 		case <-tc.C:
 			if count > 0 { // 超过一定时间，没达到指定行数也要发送
-				send(data, t.Filename)
+				send(data, t.Filename, count)
 				data = &bytes.Buffer{}
 				count = 0
 			}
@@ -158,21 +158,21 @@ func traceRT(t *tail.Tail) func() {
 	}
 }
 
-func send(data *bytes.Buffer, filename string) {
+func send(data *bytes.Buffer, filename string, count int) {
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
 
 	part1, _ := writer.CreateFormFile("log", filename)
 	_, e1 := part1.Write(data.Bytes())
 	if e1 != nil {
-		log.Printf("%s 发送数据失败: %v", filename, e1)
+		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e1)
 		writer.Close()
 		return
 	}
 	part2, _ := writer.CreateFormField("app")
 	_, e5 := part2.Write(app)
 	if e5 != nil {
-		log.Printf("%s 发送数据失败: %v", filename, e5)
+		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e5)
 		writer.Close()
 		return
 	}
@@ -181,7 +181,7 @@ func send(data *bytes.Buffer, filename string) {
 	writer.Close()
 	req, e2 := http.NewRequest("POST", conf.Url, buf)
 	if e2 != nil {
-		log.Printf("%s 发送数据失败: %v", filename, e2)
+		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e2)
 		return
 	}
 	req.Header.Set("Content-Type", contentType)
@@ -189,17 +189,17 @@ func send(data *bytes.Buffer, filename string) {
 	rep, e3 := client.Do(req)
 
 	if e3 != nil {
-		log.Printf("%s 发送数据失败: %v", filename, e3)
+		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e3)
 		return
 	}
 	body, e4 := ioutil.ReadAll(rep.Body)
 	rep.Body.Close()
 	if e4 != nil {
-		log.Printf("%s 发送数据失败: %v", filename, e4)
+		log.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e4)
 		return
 	}
 	ret := string(body)
 	if ret != "{\"code\":\"0000\"}" {
-		log.Printf("%s 发送数据失败: %s", filename, ret)
+		log.Printf("%s 发送数据失败，丢弃日志%d行: %s", filename, count, ret)
 	}
 }
