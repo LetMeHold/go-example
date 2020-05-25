@@ -19,12 +19,14 @@ import (
 )
 
 var (
-	conf  Config
-	app   []byte
-	mu    sync.Mutex
-	tmot  time.Duration
-	tmFmt = "2006010215"
-	tConf = tail.Config{
+	conf      Config
+	app       []byte
+	tailNum   int
+	muWhence  sync.Mutex
+	muTailNum sync.Mutex
+	tmot      time.Duration
+	tmFmt     = "2006010215"
+	tConf     = tail.Config{
 		Follow: true,
 		Location: &tail.SeekInfo{
 			Offset: 0,
@@ -57,7 +59,7 @@ func main() {
 	for {
 		select {
 		case <-tc.C:
-			log.Printf("Goroutine number: %d", runtime.NumGoroutine())
+			log.Printf("当前线程数: %d, 监听文件数: %d", runtime.NumGoroutine(), tailNum)
 		}
 	}
 }
@@ -146,6 +148,7 @@ OutFor:
 
 func traceRT(t *tail.Tail) func() {
 	log.Printf("开始监听文件: %s", t.Filename)
+	tailCount(true)
 	return func() {
 		t.Cleanup()
 		if e := t.Stop(); e != nil {
@@ -153,11 +156,22 @@ func traceRT(t *tail.Tail) func() {
 		}
 		if tConf.Location.Whence != conf.FollowWhence {
 			// 默认首次启动从文件末尾tail，后续则从文件开头tail
-			mu.Lock()
+			muWhence.Lock()
 			tConf.Location.Whence = conf.FollowWhence
-			mu.Unlock()
+			muWhence.Unlock()
 		}
 		log.Printf("停止监听文件: %s", t.Filename)
+		tailCount(false)
+	}
+}
+
+func tailCount(add bool) {
+	muTailNum.Lock()
+	defer muTailNum.Unlock()
+	if add {
+		tailNum++
+	} else {
+		tailNum--
 	}
 }
 
