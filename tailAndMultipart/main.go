@@ -158,7 +158,7 @@ OutFor:
 			}
 		}
 	}
-	log.Printf("%s 读取行数: %s, 发送行数: %d", t.Filename, total, success)
+	log.Printf("%s 读取行数: %d, 发送行数: %d", t.Filename, total, success)
 }
 
 func traceRT(t *tail.Tail) func() {
