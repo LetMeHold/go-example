@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"github.com/hpcloud/tail"
 	"io/ioutil"
 	"log"
@@ -118,6 +119,8 @@ func recvTail(t *tail.Tail, recvBuf, sendBuf *bytes.Buffer) {
 	start := time.Now()
 	tc := time.NewTicker(time.Minute)
 	count := 0
+	total := 0
+	success := 0
 OutFor:
 	for {
 		select {
@@ -129,13 +132,24 @@ OutFor:
 			recvBuf.WriteString(line.Text)
 			recvBuf.WriteString("\n")
 			count++
+			total++
 			if count == conf.LineNum { // 缓存指定行数后一起发送
-				send(recvBuf, sendBuf, t.Filename, count)
+				e := send(recvBuf, sendBuf, t.Filename, count)
+				if e != nil {
+					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
+				} else {
+					success += count
+				}
 				count = 0
 			}
 		case <-tc.C:
 			if count > 0 { // 超过一定时间，没达到指定行数也要发送
-				send(recvBuf, sendBuf, t.Filename, count)
+				e := send(recvBuf, sendBuf, t.Filename, count)
+				if e != nil {
+					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
+				} else {
+					success += count
+				}
 				count = 0
 			}
 			if time.Now().Hour() != start.Hour() {
@@ -144,16 +158,17 @@ OutFor:
 			}
 		}
 	}
+	log.Printf("%s 读取行数: %s, 发送行数: %d", t.Filename, total, success)
 }
 
 func traceRT(t *tail.Tail) func() {
 	log.Printf("开始监听文件: %s", t.Filename)
 	tailCount(true)
 	return func() {
-		t.Cleanup()
 		if e := t.Stop(); e != nil {
 			errLog.Printf("%s stop tail 出现错误: %v", t.Filename, e)
 		}
+		t.Cleanup()
 		if tConf.Location.Whence != conf.FollowWhence {
 			// 默认首次启动从文件末尾tail，后续则从文件开头tail
 			muWhence.Lock()
@@ -175,48 +190,44 @@ func tailCount(add bool) {
 	}
 }
 
-func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) {
+func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) error {
 	defer recvBuf.Reset()
 	defer sendBuf.Reset()
 	writer := multipart.NewWriter(sendBuf)
 	part1, _ := writer.CreateFormFile("log", filename)
 	_, e1 := part1.Write(recvBuf.Bytes())
 	if e1 != nil {
-		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e1)
 		writer.Close()
-		return
+		return e1
 	}
 	part2, _ := writer.CreateFormField("app")
 	_, e5 := part2.Write(app)
 	if e5 != nil {
-		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e5)
 		writer.Close()
-		return
+		return e5
 	}
 
 	contentType := writer.FormDataContentType()
 	writer.Close()
 	req, e2 := http.NewRequest("POST", conf.Url, sendBuf)
 	if e2 != nil {
-		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e2)
-		return
+		return e2
 	}
 	req.Header.Set("Content-Type", contentType)
 	client := &http.Client{Timeout: time.Duration(time.Second * tmot)}
 	rep, e3 := client.Do(req)
 
 	if e3 != nil {
-		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e3)
-		return
+		return e3
 	}
 	body, e4 := ioutil.ReadAll(rep.Body)
 	rep.Body.Close()
 	if e4 != nil {
-		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", filename, count, e4)
-		return
+		return e4
 	}
 	ret := string(body)
 	if ret != "{\"code\":\"0000\"}" {
-		errLog.Printf("%s 发送数据失败，丢弃日志%d行: %s", filename, count, ret)
+		return errors.New(ret)
 	}
+	return nil
 }
