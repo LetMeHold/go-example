@@ -22,23 +22,20 @@ import (
 )
 
 var (
-	conf      Config
-	app       []byte
-	tailNum   int
-	muWhence  sync.Mutex
-	muTailNum sync.Mutex
-	muTailBox sync.Mutex
-	tmot      time.Duration
-	tmFmt     = "2006010215"
-	tConf     = tail.Config{
+	conf     Config
+	app      []byte
+	muWhence sync.Mutex
+	tmot     time.Duration
+	tmFmt    = "2006010215"
+	tConf    = tail.Config{
 		Follow: true,
 		Location: &tail.SeekInfo{
 			Offset: 0,
 			Whence: 2, // 0 文件开头, 1 指定Offset, 2 文件末尾
 		},
 	}
-	tailBox = make(map[string]*tail.Tail)
-	errLog  = log.New(os.Stdout, "ERROR ", log.Ldate|log.Ltime)
+	tBox   = TailBox{box: make(map[string]*tail.Tail)}
+	errLog = log.New(os.Stdout, "ERROR ", log.Ldate|log.Ltime)
 )
 
 func main() {
@@ -81,10 +78,10 @@ OutFor:
 	for {
 		select {
 		case <-tc.C:
-			log.Printf("当前线程数: %d, 监听文件数: %d", runtime.NumGoroutine(), tailNum)
+			log.Printf("当前线程数: %d, 监听文件数: %d", runtime.NumGoroutine(), tBox.len())
 		case s := <-sChan:
 			log.Println("接收到退出信号: ", s)
-			clearBox()
+			tBox.clear()
 		}
 	}
 }
@@ -189,10 +186,9 @@ OutFor:
 
 func traceRT(t *tail.Tail) func() {
 	log.Printf("开始监听文件: %s", t.Filename)
-	addToBox(t)
-	tailCount(true)
+	tBox.add(t)
 	return func() {
-		delFromBox(t)
+		tBox.del(t)
 		if tConf.Location.Whence != conf.FollowWhence {
 			// 默认首次启动从文件末尾tail，后续则从文件开头tail
 			muWhence.Lock()
@@ -200,17 +196,6 @@ func traceRT(t *tail.Tail) func() {
 			muWhence.Unlock()
 		}
 		log.Printf("停止监听文件: %s", t.Filename)
-		tailCount(false)
-	}
-}
-
-func tailCount(add bool) {
-	muTailNum.Lock()
-	defer muTailNum.Unlock()
-	if add {
-		tailNum++
-	} else {
-		tailNum--
 	}
 }
 
@@ -256,35 +241,44 @@ func send(recvBuf, sendBuf *bytes.Buffer, t *tail.Tail, count int) error {
 	return nil
 }
 
-func addToBox(t *tail.Tail) {
-	muTailBox.Lock()
-	defer muTailBox.Unlock()
-	tailBox[t.Filename] = t
+type TailBox struct {
+	box map[string]*tail.Tail
+	mu  sync.Mutex
 }
 
-func delFromBox(t *tail.Tail) {
-	muTailBox.Lock()
-	defer muTailBox.Unlock()
-	if e := tailBox[t.Filename].Stop(); e != nil {
+func (tb *TailBox) add(t *tail.Tail) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	tb.box[t.Filename] = t
+}
+
+func (tb *TailBox) del(t *tail.Tail) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	if e := tb.box[t.Filename].Stop(); e != nil {
 		errLog.Printf("%s stop tail 出现错误: %v", t.Filename, e)
 	}
-	tailBox[t.Filename].Cleanup()
-	delete(tailBox, t.Filename)
+	tb.box[t.Filename].Cleanup()
+	delete(tb.box, t.Filename)
 }
 
-func clearBox() {
+func (tb *TailBox) len() int {
+	return len(tb.box)
+}
+
+func (tb *TailBox) clear() {
 	now := time.Now()
 	if now.Minute() == 0 && now.Second() == conf.StartSecond {
 		// 等待文件切换时间过去
 		time.Sleep(time.Second * 1)
 	}
-	muTailBox.Lock()
-	for _, t := range tailBox {
+	tb.mu.Lock()
+	for _, t := range tb.box {
 		t.Stop()
 		t.Cleanup()
 	}
 	time.Sleep(time.Second * 1)
-	log.Printf("程序清理完成（%d个文件监听），正常退出。", len(tailBox))
-	muTailBox.Unlock()
+	log.Printf("程序清理完成（%d个文件监听），正常退出。", len(tb.box))
+	tb.mu.Unlock()
 	os.Exit(0)
 }
