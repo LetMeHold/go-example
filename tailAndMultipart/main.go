@@ -63,6 +63,7 @@ OutFor:
 	}
 	t.Stop()
 
+	log.Println("程序准备完成，开始启动。")
 	for _, proj := range conf.Files {
 		path := conf.Path + "/" + proj
 		if _, e := os.Stat(path); e != nil {
@@ -283,7 +284,7 @@ func clearBox() {
 		t.Cleanup()
 	}
 	time.Sleep(time.Second * 1)
-	log.Println("程序清理完成，正常退出。")
+	log.Printf("程序清理完成（%d个文件监听），正常退出。", len(tailBox))
 	muTailBox.Unlock()
 	os.Exit(0)
 }
