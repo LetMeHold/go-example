@@ -45,6 +45,20 @@ func main() {
 		return
 	}
 
+	t := time.NewTicker(time.Second)
+OutFor:
+	for { // 为避免切换文件时上一个文件有遗留数据来不及处理, 默认启动秒数为30
+		select {
+		case <-t.C:
+			if time.Now().Second() != conf.StartSecond {
+				log.Printf("未到启动秒数: %d, 等待...", conf.StartSecond)
+			} else {
+				break OutFor
+			}
+		}
+	}
+	t.Stop()
+
 	for _, proj := range conf.Files {
 		path := conf.Path + "/" + proj
 		if _, e := os.Stat(path); e != nil {
@@ -69,6 +83,7 @@ type Config struct {
 	Url          string   `json: "Url"`
 	Timeout      int      `json: "Timeout"`
 	LineNum      int      `json: "LineNum"`
+	StartSecond  int      `json: "StartSecond"`
 	FirstWhence  int      `json: "FirstWhence"`
 	FollowWhence int      `json: "FollowWhence"`
 	App          string   `json: "App"`
@@ -158,6 +173,7 @@ OutFor:
 			}
 		}
 	}
+	tc.Stop()
 	log.Printf("%s 读取行数: %d, 发送行数: %d", t.Filename, total, success)
 }
 

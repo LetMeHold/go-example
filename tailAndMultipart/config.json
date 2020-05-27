@@ -2,6 +2,7 @@
     "Url": "http://172.18.27.106:4902/log/access/tengine_log",
     "Timeout": 3,
     "LineNum": 10,
+    "StartSecond": 30,
     "FirstWhence": 2,
     "FollowWhence": 0,
     "App": "我的APP",
