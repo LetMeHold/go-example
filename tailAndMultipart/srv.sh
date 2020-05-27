@@ -14,7 +14,7 @@ function start()
         echo "PID: $PIDS"
         exit 1
     fi
-    nohup $EXE_FILE >> $LOG_DIR/std.out 2>&1 &
+    nohup $EXE_FILE >> $LOG_DIR/log 2>&1 &
 }
 
 function stop()
@@ -24,6 +24,7 @@ function stop()
         echo "ERROR: The $SERVER_NAME not started!"
     else
         kill $PIDS
+        sleep 3
     fi
 }
 
@@ -33,7 +34,6 @@ elif [ "$1" == "stop" ];then
     stop
 elif [ "$1" == "restart" ];then
     stop
-    sleep 3
     start
 else
     echo "srv.sh [start/stop/restart]"

@@ -76,19 +76,14 @@ OutFor:
 
 	tc := time.NewTicker(time.Minute * 15)
 	sChan := make(chan os.Signal)
-	signal.Notify(sChan)
+	signal.Notify(sChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 	for {
 		select {
 		case <-tc.C:
 			log.Printf("当前线程数: %d, 监听文件数: %d", runtime.NumGoroutine(), tailNum)
 		case s := <-sChan:
-			switch s {
-			case syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP:
-				log.Println("接收到退出信号: ", s)
-				clearBox()
-			default:
-				log.Println("接收到其他信号: ", s)
-			}
+			log.Println("接收到退出信号: ", s)
+			clearBox()
 		}
 	}
 }
@@ -155,7 +150,7 @@ OutFor:
 		select {
 		case line, ok := <-t.Lines:
 			if !ok {
-				errLog.Printf("%s tail chan 出现未知错误!", t.Filename)
+				errLog.Printf("%s tail chan 已被关闭!", t.Filename)
 				break OutFor
 			}
 			recvBuf.WriteString(line.Text)
@@ -280,13 +275,14 @@ func clearBox() {
 	now := time.Now()
 	if now.Minute() == 0 && now.Second() == conf.StartSecond {
 		// 等待文件切换时间过去
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 1)
 	}
 	muTailBox.Lock()
 	for _, t := range tailBox {
 		t.Stop()
 		t.Cleanup()
 	}
+	time.Sleep(time.Second * 1)
 	log.Println("程序清理完成，正常退出。")
 	muTailBox.Unlock()
 	os.Exit(0)
