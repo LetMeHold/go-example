@@ -14,8 +14,10 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -25,6 +27,7 @@ var (
 	tailNum   int
 	muWhence  sync.Mutex
 	muTailNum sync.Mutex
+	muTailBox sync.Mutex
 	tmot      time.Duration
 	tmFmt     = "2006010215"
 	tConf     = tail.Config{
@@ -34,7 +37,8 @@ var (
 			Whence: 2, // 0 文件开头, 1 指定Offset, 2 文件末尾
 		},
 	}
-	errLog = log.New(os.Stdout, "ERROR ", log.Ldate|log.Ltime)
+	tailBox = make(map[string]*tail.Tail)
+	errLog  = log.New(os.Stdout, "ERROR ", log.Ldate|log.Ltime)
 )
 
 func main() {
@@ -71,10 +75,20 @@ OutFor:
 	}
 
 	tc := time.NewTicker(time.Minute * 15)
+	sChan := make(chan os.Signal)
+	signal.Notify(sChan)
 	for {
 		select {
 		case <-tc.C:
 			log.Printf("当前线程数: %d, 监听文件数: %d", runtime.NumGoroutine(), tailNum)
+		case s := <-sChan:
+			switch s {
+			case syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP:
+				log.Println("接收到退出信号: ", s)
+				clearBox()
+			default:
+				log.Println("接收到其他信号: ", s)
+			}
 		}
 	}
 }
@@ -149,7 +163,7 @@ OutFor:
 			count++
 			total++
 			if count == conf.LineNum { // 缓存指定行数后一起发送
-				e := send(recvBuf, sendBuf, t.Filename, count)
+				e := send(recvBuf, sendBuf, t, count)
 				if e != nil {
 					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
 				} else {
@@ -159,7 +173,7 @@ OutFor:
 			}
 		case <-tc.C:
 			if count > 0 { // 超过一定时间，没达到指定行数也要发送
-				e := send(recvBuf, sendBuf, t.Filename, count)
+				e := send(recvBuf, sendBuf, t, count)
 				if e != nil {
 					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
 				} else {
@@ -179,12 +193,10 @@ OutFor:
 
 func traceRT(t *tail.Tail) func() {
 	log.Printf("开始监听文件: %s", t.Filename)
+	addToBox(t)
 	tailCount(true)
 	return func() {
-		if e := t.Stop(); e != nil {
-			errLog.Printf("%s stop tail 出现错误: %v", t.Filename, e)
-		}
-		t.Cleanup()
+		delFromBox(t)
 		if tConf.Location.Whence != conf.FollowWhence {
 			// 默认首次启动从文件末尾tail，后续则从文件开头tail
 			muWhence.Lock()
@@ -206,11 +218,11 @@ func tailCount(add bool) {
 	}
 }
 
-func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) error {
+func send(recvBuf, sendBuf *bytes.Buffer, t *tail.Tail, count int) error {
 	defer recvBuf.Reset()
 	defer sendBuf.Reset()
 	writer := multipart.NewWriter(sendBuf)
-	part1, _ := writer.CreateFormFile("log", filename)
+	part1, _ := writer.CreateFormFile("log", t.Filename)
 	_, e1 := part1.Write(recvBuf.Bytes())
 	if e1 != nil {
 		writer.Close()
@@ -246,4 +258,36 @@ func send(recvBuf, sendBuf *bytes.Buffer, filename string, count int) error {
 		return errors.New(ret)
 	}
 	return nil
+}
+
+func addToBox(t *tail.Tail) {
+	muTailBox.Lock()
+	defer muTailBox.Unlock()
+	tailBox[t.Filename] = t
+}
+
+func delFromBox(t *tail.Tail) {
+	muTailBox.Lock()
+	defer muTailBox.Unlock()
+	if e := tailBox[t.Filename].Stop(); e != nil {
+		errLog.Printf("%s stop tail 出现错误: %v", t.Filename, e)
+	}
+	tailBox[t.Filename].Cleanup()
+	delete(tailBox, t.Filename)
+}
+
+func clearBox() {
+	now := time.Now()
+	if now.Minute() == 0 && now.Second() == conf.StartSecond {
+		// 等待文件切换时间过去
+		time.Sleep(time.Second * 2)
+	}
+	muTailBox.Lock()
+	for _, t := range tailBox {
+		t.Stop()
+		t.Cleanup()
+	}
+	log.Println("程序清理完成，正常退出。")
+	muTailBox.Unlock()
+	os.Exit(0)
 }
