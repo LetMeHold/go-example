@@ -52,8 +52,8 @@ func (db database) update(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotFound) // 404
 		fmt.Fprintf(w, "no such item: %q\n", item)
 	} else if err != nil {
-		w.WriteHeader(http.StatusNotFound) // 404
-		fmt.Fprintf(w, "invalid price: %q\n", price)
+		msg := fmt.Sprintf("invalid price: %q", price)
+		http.Error(w, msg, http.StatusNotFound) // 实用的http.Error函数
 	} else {
 		muUpdate.Lock()
 		db[item] = float32(new)
