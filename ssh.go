@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	//"bufio"
 )
 
 func main() {
@@ -21,9 +22,13 @@ func main() {
 		log.Fatalf("Create new connect failed : %v", err)
 	}
 	defer client.Close()
-	if err := Commond(client, "java"); err != nil {
-		log.Fatalf("Commond failed : %v", err)
+	if err := Run(client, "whoami"); err != nil {
+		log.Fatalf("Run failed : %v", err)
 	}
+	if err := Start(client, "ping 127.0.0.1 -c 3"); err != nil {
+		log.Fatalf("Start failed : %v", err)
+	}
+    // Shell在Start或Shell后启动，第一下键盘操作会不起作用，尚未找到解决方法
 	if err := Shell(client); err != nil {
 		log.Fatalf("Start shell failed : %v", err)
 	}
@@ -104,8 +109,8 @@ func NewConnByKeyWithPwd(host, usr, keyFile, keyPwd string) (*ssh.Client, error)
 	return client, nil
 }
 
-// Commond 在远程主机执行一条命令
-func Commond(client *ssh.Client, cmd string) error {
+// Run 在远程主机执行一条命令，并获取输出
+func Run(client *ssh.Client, cmd string) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
@@ -120,6 +125,28 @@ func Commond(client *ssh.Client, cmd string) error {
 		return err
 	}
 	log.Printf("%s output :\n%s", cmd, outBuf.String())
+	return nil
+}
+
+// Start 在远程主机执行一条需要交互或持续输出的命令，比如ssh-keygen和tail -f
+func Start(client *ssh.Client, cmd string) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+	session.Stdin = os.Stdin
+	exe := "source /etc/profile;" + cmd // non-login形式默认不读/etc/profile
+	err = session.Start(exe)
+	if err != nil {
+		return err
+	}
+	err = session.Wait()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -142,14 +169,14 @@ func Shell(client *ssh.Client) error {
 	if termType == "" {
 		termType = "xterm-256color"
 	}
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+	session.Stdin = os.Stdin
 	// 通过本机信息获取伪终端
 	err = session.RequestPty(termType, termHeight, termWidth, ssh.TerminalModes{})
 	if err != nil {
 		return err
 	}
-	session.Stdout = os.Stdout
-	session.Stderr = os.Stderr
-	session.Stdin = os.Stdin
 	// 启动终端，期间不要改变本机终端的大小，否则会显示错位
 	err = session.Shell()
 	if err != nil {
