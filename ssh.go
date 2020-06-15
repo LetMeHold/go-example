@@ -28,7 +28,7 @@ func main() {
 	if err := Start(client, "ping 127.0.0.1 -c 3"); err != nil {
 		log.Fatalf("Start failed : %v", err)
 	}
-    // Shell在Start或Shell后启动，第一下键盘操作会不起作用，尚未找到解决方法
+	// Shell在Start或Shell后启动，第一下键盘操作会不起作用，尚未找到解决方法
 	if err := Shell(client); err != nil {
 		log.Fatalf("Start shell failed : %v", err)
 	}
@@ -121,7 +121,7 @@ func Run(client *ssh.Client, cmd string) error {
 	session.Stderr = &errBuf
 	exe := "source /etc/profile;" + cmd // non-login形式默认不读/etc/profile
 	if err := session.Run(exe); err != nil {
-	    log.Printf("%s error :\n%s", cmd, errBuf.String())
+		log.Printf("%s error :\n%s", cmd, errBuf.String())
 		return err
 	}
 	log.Printf("%s output :\n%s", cmd, outBuf.String())
