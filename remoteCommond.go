@@ -17,7 +17,7 @@ func main() {
 		log.Fatalf("Create new connect failed : %v", err)
 	}
 	defer client.Close()
-	if err := Commond(client, "locale"); err != nil {
+	if err := Commond(client, "java"); err != nil {
 		log.Fatalf("Commond failed : %v", err)
 	}
 	if err := Shell(client); err != nil {
@@ -107,13 +107,15 @@ func Commond(client *ssh.Client, cmd string) error {
 		return err
 	}
 	defer session.Close()
-	var buf bytes.Buffer
-	session.Stdout = &buf
+	var outBuf, errBuf bytes.Buffer
+	session.Stdout = &outBuf
+	session.Stderr = &errBuf
 	exe := "source /etc/profile;" + cmd // non-login形式默认不读/etc/profile
 	if err := session.Run(exe); err != nil {
+	    log.Printf("%s error :\n%s", cmd, errBuf.String())
 		return err
 	}
-	log.Printf("%s output :\n%s", cmd, buf.String())
+	log.Printf("%s output :\n%s", cmd, outBuf.String())
 	return nil
 }
 
