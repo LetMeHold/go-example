@@ -1,5 +1,9 @@
 package main
 
+/*
+处理系统发来的退出信号
+*/
+
 import (
 	"log"
 	"os"
