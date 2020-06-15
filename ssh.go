@@ -1,5 +1,9 @@
 package main
 
+/*
+通过ssh远程执行命令
+*/
+
 import (
 	"bytes"
 	"golang.org/x/crypto/ssh"
