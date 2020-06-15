@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"log"
 	"os"
@@ -9,13 +11,17 @@ import (
 
 func main() {
 	//client, err := NewConnByPwd("172.18.180.110:22", "root", "password")
-	//client, err := NewConnByKey("172.18.180.110:22", "root")
-	client, err := NewConnByKeyWithPwd("172.18.180.110:22", "root", "/root/.ssh/id_rsa_pwd", "key_password")
+	client, err := NewConnByKey("172.18.180.110:22", "root")
+	//client, err := NewConnByKeyWithPwd("172.18.180.110:22", "root", "/root/.ssh/id_rsa_pwd", "key_password")
 	if err != nil {
 		log.Fatalf("Create new connect failed : %v", err)
 	}
+	defer client.Close()
 	if err := Commond(client, "locale"); err != nil {
 		log.Fatalf("Commond failed : %v", err)
+	}
+	if err := Shell(client); err != nil {
+		log.Fatalf("Start shell failed : %v", err)
 	}
 }
 
@@ -101,11 +107,50 @@ func Commond(client *ssh.Client, cmd string) error {
 		return err
 	}
 	defer session.Close()
+	var buf bytes.Buffer
+	session.Stdout = &buf
+	exe := "source /etc/profile;" + cmd // non-login形式默认不读/etc/profile
+	if err := session.Run(exe); err != nil {
+		return err
+	}
+	log.Printf("%s output :\n%s", cmd, buf.String())
+	return nil
+}
+
+// Shell 从远程主机获取一个完整的shell会话
+func Shell(client *ssh.Client) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	// 获取本机终端信息
+	fd := int(os.Stdin.Fd())
+	state, err := terminal.MakeRaw(fd)
+	if err != nil {
+		return err
+	}
+	defer terminal.Restore(fd, state)
+	termWidth, termHeight, err := terminal.GetSize(fd)
+	termType := os.Getenv("TERM")
+	if termType == "" {
+		termType = "xterm-256color"
+	}
+	// 通过本机信息获取伪终端
+	err = session.RequestPty(termType, termHeight, termWidth, ssh.TerminalModes{})
+	if err != nil {
+		return err
+	}
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 	session.Stdin = os.Stdin
-	exe := "source /etc/profile;" + cmd // non-login形式默认不读/etc/profile
-	if err := session.Run(exe); err != nil {
+	// 启动终端，期间不要改变本机终端的大小，否则会显示错位
+	err = session.Shell()
+	if err != nil {
+		return err
+	}
+	err = session.Wait()
+	if err != nil {
 		return err
 	}
 	return nil
