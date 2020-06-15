@@ -1,7 +1,7 @@
 package main
 
 /*
-等待所有并发协程的结束
+等待所有协程结束
 */
 
 import (
