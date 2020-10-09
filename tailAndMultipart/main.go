@@ -255,10 +255,7 @@ func (tb *TailBox) add(t *tail.Tail) {
 func (tb *TailBox) del(t *tail.Tail) {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
-	if e := tb.box[t.Filename].Stop(); e != nil {
-		errLog.Printf("%s stop tail 出现错误: %v", t.Filename, e)
-	}
-	tb.box[t.Filename].Cleanup()
+	tb.closeTail(t, "TailBox.del")
 	delete(tb.box, t.Filename)
 }
 
@@ -274,11 +271,21 @@ func (tb *TailBox) clear() {
 	}
 	tb.mu.Lock()
 	for _, t := range tb.box {
-		t.Stop()
-		t.Cleanup()
+		tb.closeTail(t, "TailBox.clear")
 	}
 	time.Sleep(time.Second * 1)
 	log.Printf("程序清理完成（%d个文件监听），正常退出。", len(tb.box))
 	tb.mu.Unlock()
 	os.Exit(0)
+}
+
+func (tb *TailBox) closeTail(t *tail.Tail, location string) {
+	log.Printf("%s stop tail on %s 开始", t.Filename, location)
+	if e := t.Stop(); e != nil {
+		errLog.Printf("%s stop tail on %s 出现错误: %v", t.Filename, location, e)
+	}
+	log.Printf("%s stop tail on %s 结束", t.Filename, location)
+	log.Printf("%s cleanup tail on %s 开始", t.Filename, location)
+	t.Cleanup()
+	log.Printf("%s cleanup tail on %s 结束", t.Filename, location)
 }
