@@ -89,6 +89,7 @@ OutFor:
 type Config struct {
 	Url          string   `json: "Url"`
 	Timeout      int      `json: "Timeout"`
+	FailNum      int      `json: "FailNum"`
 	LineNum      int      `json: "LineNum"`
 	StartSecond  int      `json: "StartSecond"`
 	FirstWhence  int      `json: "FirstWhence"`
@@ -107,6 +108,7 @@ func loadConf(fname string, conf *Config) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("载入配置文件成功: %+v", conf)
 	app = []byte(conf.App)
 	tmot = time.Duration(conf.Timeout)
 	tConf.Location.Whence = conf.FirstWhence
@@ -145,6 +147,9 @@ func recvTail(t *tail.Tail, recvBuf, sendBuf *bytes.Buffer) {
 	success := 0
 	lineSend := 0
 	timeSend := 0
+	failNum := 0
+	ban := false
+	banCount := 0
 OutFor:
 	for {
 		select {
@@ -158,22 +163,48 @@ OutFor:
 			count++
 			total++
 			if count == conf.LineNum { // 缓存指定行数后一起发送
-				lineSend += 1
+				if ban {
+					recvBuf.Reset()
+					sendBuf.Reset()
+					banCount += count
+					count = 0
+					continue
+				}
+				lineSend++
 				e := send(recvBuf, sendBuf, t, count)
 				if e != nil {
+					failNum++
+					if failNum >= conf.FailNum {
+						ban = true
+						errLog.Printf("%s 连续发送数据失败%d次，本次监听不再发送", t.Filename, failNum)
+					}
 					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
 				} else {
+					failNum = 0
 					success += count
 				}
 				count = 0
 			}
 		case <-tc.C:
 			if count > 0 { // 超过一定时间，没达到指定行数也要发送
-				timeSend += 1
+				if ban {
+					recvBuf.Reset()
+					sendBuf.Reset()
+					banCount += count
+					count = 0
+					continue
+				}
+				timeSend++
 				e := send(recvBuf, sendBuf, t, count)
 				if e != nil {
+					failNum++
+					if failNum >= conf.FailNum {
+						ban = true
+						errLog.Printf("%s 连续发送数据失败%d次，本次监听不再发送", t.Filename, failNum)
+					}
 					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
 				} else {
+					failNum = 0
 					success += count
 				}
 				count = 0
@@ -185,7 +216,7 @@ OutFor:
 		}
 	}
 	tc.Stop()
-	log.Printf("%s 读取行数: %d, 发送行数: %d, 满足行数发送%d次, 满足超时发送%d次", t.Filename, total, success, lineSend, timeSend)
+	log.Printf("%s 读取行数: %d, 发送行数: %d, 满足行数发送%d次, 满足超时发送%d次, 被ban行数: %d", t.Filename, total, success, lineSend, timeSend, banCount)
 }
 
 func traceRT(t *tail.Tail) func() {
