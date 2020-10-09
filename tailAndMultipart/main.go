@@ -143,6 +143,8 @@ func recvTail(t *tail.Tail, recvBuf, sendBuf *bytes.Buffer) {
 	count := 0
 	total := 0
 	success := 0
+	lineSend := 0
+	timeSend := 0
 OutFor:
 	for {
 		select {
@@ -156,6 +158,7 @@ OutFor:
 			count++
 			total++
 			if count == conf.LineNum { // 缓存指定行数后一起发送
+				lineSend += 1
 				e := send(recvBuf, sendBuf, t, count)
 				if e != nil {
 					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
@@ -166,6 +169,7 @@ OutFor:
 			}
 		case <-tc.C:
 			if count > 0 { // 超过一定时间，没达到指定行数也要发送
+				timeSend += 1
 				e := send(recvBuf, sendBuf, t, count)
 				if e != nil {
 					errLog.Printf("%s 发送数据失败，丢弃日志%d行: %v", t.Filename, count, e)
@@ -181,7 +185,7 @@ OutFor:
 		}
 	}
 	tc.Stop()
-	log.Printf("%s 读取行数: %d, 发送行数: %d", t.Filename, total, success)
+	log.Printf("%s 读取行数: %d, 发送行数: %d, 满足行数发送%d次, 满足超时发送%d次", t.Filename, total, success, lineSend, timeSend)
 }
 
 func traceRT(t *tail.Tail) func() {
